@@ -76,7 +76,7 @@ func handleSignals() {
 			logger.LogIf(context.Background(), err)
 			exit(stopProcess())
 		case osSignal := <-globalOSSignalCh:
-			logger.Info("Exiting on signal: %s", strings.ToUpper(osSignal.String()))
+			logger.Info("收到退出信号: %s", strings.ToUpper(osSignal.String()))
 			daemon.SdNotify(false, daemon.SdNotifyStopping)
 			exit(stopProcess())
 		case signal := <-globalServiceSignalCh:

@@ -775,8 +775,9 @@ func initFormatErasure(ctx context.Context, storageDisks []StorageAPI, setCount,
 						logger.Info("   - Drive: %s", disk.String())
 					}
 				})
-				logger.Info(color.Yellow("WARNING:")+" Host %v has more than %v drives of set. "+
-					"A host failure will result in data becoming unavailable.", host, wantAtMost)
+				//logger.Info(color.Yellow("WARNING:")+" Host %v has more than %v drives of set. "+
+				//	"A host failure will result in data becoming unavailable.", host, wantAtMost)
+				logger.Info(color.Yellow("WARNING:") + " 警告：本地主机的驱动器集超过1个。主机故障将导致数据不可用.")
 			}
 		}
 	}

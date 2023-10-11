@@ -128,9 +128,12 @@ var (
 	)
 
 	ErrInvalidCredentials = newErrFn(
-		"Invalid credentials",
-		"Please provide correct credentials",
-		`Access key length should be at least 3, and secret key length at least 8 characters`,
+		"无效的参数",
+		//"Invalid credentials",
+		//"Please provide correct credentials",
+		"请提供正确的参数",
+		//`Access key length should be at least 3, and secret key length at least 8 characters`,
+		`账号密码长度最少3,密码最少长度8`,
 	)
 
 	ErrMissingEnvCredentialRootUser = newErrFn(

@@ -767,7 +767,7 @@ func serverMain(ctx *cli.Context) {
 	})
 
 	if globalActiveCred.Equal(auth.DefaultCredentials) {
-		msg := fmt.Sprintf("WARNING: Detected default credentials '%s', we recommend that you change these values with 'MINIO_ROOT_USER' and 'MINIO_ROOT_PASSWORD' environment variables",
+		msg := fmt.Sprintf("警告: 检测到默认凭据 '%s', 我们建议您使用更改这些值 'MINIO_ROOT_USER' and 'MINIO_ROOT_PASSWORD' 不要使用默认凭据",
 			globalActiveCred)
 		logger.Info(color.RedBold(msg))
 	}
