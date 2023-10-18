@@ -19,6 +19,13 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/minio/cli"
+	"github.com/minio/minio/internal/color"
+	"github.com/minio/minio/internal/logger"
+	"github.com/minio/pkg/v2/console"
+	"github.com/minio/pkg/v2/env"
+	"github.com/minio/pkg/v2/trie"
+	"github.com/minio/pkg/v2/words"
 	"io"
 	"os"
 	"path/filepath"
@@ -27,17 +34,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
-	"unsafe"
-
-	"github.com/minio/cli"
-	"github.com/minio/minio/internal/color"
-	"github.com/minio/minio/internal/logger"
-	"github.com/minio/pkg/v2/console"
-	"github.com/minio/pkg/v2/env"
-	"github.com/minio/pkg/v2/trie"
-	"github.com/minio/pkg/v2/words"
 )
 
 // GlobalFlags - global flags for minio.
@@ -195,10 +192,10 @@ func printMinIOVersion(c *cli.Context) {
 func init() {
 	//允许exe直接运行
 	//cobra.MousetrapHelpText = ""
-	kernel32, _ := syscall.LoadLibrary(`kernel32.dll`)
-	sct, _ := syscall.GetProcAddress(kernel32, `SetConsoleTitleW`)
-	syscall.Syscall(sct, 1, uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr("minio文件服务器 by_chrelyonly"))), 0, 0)
-	syscall.FreeLibrary(kernel32)
+	//kernel32, _ := syscall.LoadLibrary(`kernel32.dll`)
+	//sct, _ := syscall.GetProcAddress(kernel32, `SetConsoleTitleW`)
+	//syscall.Syscall(sct, 1, uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr("minio文件服务器 by_chrelyonly"))), 0, 0)
+	//syscall.FreeLibrary(kernel32)
 }
 
 // Main main for minio server.
