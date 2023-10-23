@@ -90,6 +90,20 @@ func Optimize(args []string) []string {
 			fmt.Println("账号密码设置失败")
 			os.Exit(1)
 		}
+		//将配置信息保存
+		person := Person{
+			UserName: userName,
+			Password: password,
+			ApiProd:  apiProd,
+			WebProd:  webProd,
+		}
+		//将配置信息写入文件
+		encoder := json.NewEncoder(config)
+		err = encoder.Encode(person)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
 	} else {
 		//	如果存在文件则,从文件中读取配置
 		fmt.Println(color.GreenBold("当前配置文件存在,将从配置文件中读取配置"))
@@ -113,20 +127,6 @@ func Optimize(args []string) []string {
 		webProd = person.WebProd
 	}
 
-	//将配置信息保存
-	person := Person{
-		UserName: userName,
-		Password: password,
-		ApiProd:  apiProd,
-		WebProd:  webProd,
-	}
-	//将配置信息写入文件
-	encoder := json.NewEncoder(config)
-	err = encoder.Encode(person)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
 	//关闭文件
 	err = config.Close()
 	if err != nil {
