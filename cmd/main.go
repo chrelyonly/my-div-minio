@@ -20,6 +20,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/minio/cli"
+	"github.com/minio/minio/cmd/chrelyonly"
 	"github.com/minio/minio/internal/color"
 	"github.com/minio/minio/internal/logger"
 	"github.com/minio/pkg/v2/console"
@@ -32,9 +33,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"sort"
-	"strconv"
 	"strings"
-	"time"
 )
 
 // GlobalFlags - global flags for minio.
@@ -173,15 +172,16 @@ func startupBanner(banner io.Writer) {
 	fmt.Fprintln(banner, color.BlueBold("版权所有:")+color.Bold(" 2015-%s MinIO, Inc.", CopyrightYear))
 	fmt.Fprintln(banner, color.BlueBold("开源协议:")+color.Bold(" GNU AGPLv3 <https://www.gnu.org/licenses/agpl-3.0.html>"))
 	fmt.Fprintln(banner, color.BlueBold("版本号:")+color.Bold(" %s (%s %s/%s)", ReleaseTag, runtime.Version(), runtime.GOOS, runtime.GOARCH))
-	fmt.Fprintln(banner, color.GreenBold("汉化作者:")+color.Bold(" chrelyonly"))
+	fmt.Fprintln(banner, color.GreenBold("汉化作者: chrelyonly"))
+	fmt.Fprintln(banner, color.GreenBold("div版本: 1.2"))
 }
 
 func versionBanner(c *cli.Context) io.Reader {
 	banner := &strings.Builder{}
 	fmt.Fprintln(banner, color.Bold("%s 版本 %s (commit-id=%s)", c.App.Name, c.App.Version, CommitID))
-	fmt.Fprintln(banner, color.Blue("运行时间:")+color.Bold(" %s %s/%s", runtime.Version(), runtime.GOOS, runtime.GOARCH))
-	fmt.Fprintln(banner, color.Blue("开源协议:")+color.Bold(" GNU AGPLv3 <https://www.gnu.org/licenses/agpl-3.0.html>"))
-	fmt.Fprintln(banner, color.Blue("版权所有:")+color.Bold(" 2015-%s MinIO, Inc.", CopyrightYear))
+	fmt.Fprintln(banner, color.BlueBold("运行时间:")+color.Bold(" %s %s/%s", runtime.Version(), runtime.GOOS, runtime.GOARCH))
+	fmt.Fprintln(banner, color.BlueBold("开源协议:")+color.Bold(" GNU AGPLv3 <https://www.gnu.org/licenses/agpl-3.0.html>"))
+	fmt.Fprintln(banner, color.BlueBold("版权所有:")+color.Bold(" 2015-%s MinIO, Inc.", CopyrightYear))
 	return strings.NewReader(banner.String())
 }
 
@@ -189,71 +189,12 @@ func printMinIOVersion(c *cli.Context) {
 	io.Copy(c.App.Writer, versionBanner(c))
 }
 
-func init() {
-	//允许exe直接运行
-	//cobra.MousetrapHelpText = ""
-	//kernel32, _ := syscall.LoadLibrary(`kernel32.dll`)
-	//sct, _ := syscall.GetProcAddress(kernel32, `SetConsoleTitleW`)
-	//syscall.Syscall(sct, 1, uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr("minio文件服务器 by_chrelyonly"))), 0, 0)
-	//syscall.FreeLibrary(kernel32)
-}
-
 // Main main for minio server.
 func Main(args []string) {
-	//打印当前时间
-	currentTime := time.Now()
-	fmt.Println(color.Green("当前时间: " + currentTime.Format("2006-01-02 15:04:05")))
-	fmt.Println(color.Green("请输入管理员用户名(默认: minioadmin))"))
-	var userName string
-	_, err := fmt.Scanln(&userName)
-	if err != nil {
-		userName = "minioadmin"
-		fmt.Println(color.FgWhite("当前用户名: minioadmin"))
-	}
-	fmt.Println(color.Green("请输入管理员密码(默认: minioadmin)"))
-	var password string
-	_, err = fmt.Scanln(&password)
-	if err != nil {
-		password = "minioadmin"
-		fmt.Println(color.FgWhite("当前密码: minioadmin"))
-	}
-	fmt.Println(color.Green("请输入API接口端口(默认: 30000)"))
-	var apiProd int
-	_, err = fmt.Scanln(&apiProd)
-	if err != nil {
-		apiProd = 30000
-		fmt.Println(color.FgWhite("当前API端口: 30000"))
-	}
-	fmt.Println(color.Green("请输入web控制台端口(默认: 30001)"))
-	var webProd int
-	_, err = fmt.Scanln(&webProd)
-	if err != nil {
-		webProd = 30001
-		fmt.Println(color.FgWhite("当前web控制台端口: 30001"))
-	}
-
 	// Set the minio app name.
 	appName := filepath.Base(args[0])
-	resourceData := filepath.Base("data")
-	var newArgs []string
-	//export MINIO_ROOT_USER=userName
-	//export MINIO_ROOT_PASSWORD=password
-	//添加环境变量
-	err = os.Setenv("MINIO_ROOT_USER", userName)
-	if err != nil {
-		fmt.Println("账号密码设置失败")
-		return
-	}
-	//添加环境变量
-	err = os.Setenv("MINIO_ROOT_PASSWORD", password)
-	if err != nil {
-		fmt.Println("账号密码设置失败")
-		return
-	}
-
-	//"--MINIO_ROOT_USER:"+userName, "--MINIO_ROOT_PASSWORD:"+password,
-	args = append(newArgs, appName, "server", resourceData, "--console-address", ":"+strconv.Itoa(webProd), "--address", ":"+strconv.Itoa(apiProd))
-
+	//进行自定义改造
+	args = chrelyonly.Optimize(args)
 	if env.Get("_MINIO_DEBUG_NO_EXIT", "") != "" {
 		freeze := func(_ int) {
 			// Infinite blocking op

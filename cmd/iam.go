@@ -455,7 +455,7 @@ func (sys *IAMSys) printIAMRoles() {
 		msgs = append(msgs, color.Bold(arn))
 	}
 
-	logger.Info(fmt.Sprintf("%s %s", color.Blue("IAM Roles:"), strings.Join(msgs, " ")))
+	logger.Info(fmt.Sprintf("%s %s", color.BlueBold("IAM Roles:"), strings.Join(msgs, " ")))
 }
 
 // HasWatcher - returns if the IAM system has a watcher to be notified of

@@ -126,21 +126,21 @@ func printServerCommonMsg(apiEndpoints []string) {
 	apiEndpointStr := strings.Join(apiEndpoints, "  ")
 
 	// Colorize the message and print.
-	logger.Info(color.Blue("S3-API地址: ") + color.Bold(fmt.Sprintf("%s ", apiEndpointStr)))
+	logger.Info(color.BlueBold("S3-API地址: ") + color.Bold(fmt.Sprintf("%s ", apiEndpointStr)))
 	if color.IsTerminal() && (!globalCLIContext.Anonymous && !globalCLIContext.JSON) {
-		logger.Info(color.Blue("api账号: ") + color.Bold("%s ", cred.AccessKey))
-		logger.Info(color.Blue("api密码: ") + color.Bold("%s \n", cred.SecretKey))
+		logger.Info(color.BlueBold("api账号: ") + color.Bold("%s ", cred.AccessKey))
+		logger.Info(color.BlueBold("api密码: ") + color.Bold("%s \n", cred.SecretKey))
 		if region != "" {
-			logger.Info(color.Blue("Region: ") + color.Bold("%s", fmt.Sprintf(getFormatStr(len(region), 2), region)))
+			logger.Info(color.BlueBold("Region: ") + color.Bold("%s", fmt.Sprintf(getFormatStr(len(region), 2), region)))
 		}
 	}
 
 	if globalBrowserEnabled {
 		consoleEndpointStr := strings.Join(stripStandardPorts(getConsoleEndpoints(), globalMinioConsoleHost), " ")
-		logger.Info(color.Blue("控制面板地址: ") + color.Bold(fmt.Sprintf("%s ", consoleEndpointStr)))
+		logger.Info(color.BlueBold("控制面板地址: ") + color.Bold(fmt.Sprintf("%s ", consoleEndpointStr)))
 		if color.IsTerminal() && (!globalCLIContext.Anonymous && !globalCLIContext.JSON) {
-			logger.Info(color.Blue("账号: ") + color.Bold("%s ", cred.AccessKey))
-			logger.Info(color.Blue("密码: ") + color.Bold("%s ", cred.SecretKey))
+			logger.Info(color.BlueBold("账号: ") + color.Bold("%s ", cred.AccessKey))
+			logger.Info(color.BlueBold("密码: ") + color.Bold("%s ", cred.SecretKey))
 		}
 	}
 
@@ -150,7 +150,7 @@ func printServerCommonMsg(apiEndpoints []string) {
 
 // Prints startup message for Object API access, prints link to our SDK documentation.
 func printObjectAPIMsg() {
-	logger.Info(color.Blue("\n官方文档: ") + "https://min.io/docs/minio/linux/index.html")
+	logger.Info(color.BlueBold("\n官方文档: ") + "https://min.io/docs/minio/linux/index.html")
 }
 
 func printLambdaTargets() {
@@ -158,7 +158,7 @@ func printLambdaTargets() {
 		return
 	}
 
-	arnMsg := color.Blue("Object Lambda ARNs: ")
+	arnMsg := color.BlueBold("Object Lambda ARNs: ")
 	for _, arn := range globalLambdaTargetList.List(globalSite.Region) {
 		arnMsg += color.Bold(fmt.Sprintf("%s ", arn))
 	}
@@ -176,7 +176,7 @@ func printEventNotifiers() {
 		return
 	}
 
-	arnMsg := color.Blue("SQS ARNs: ")
+	arnMsg := color.BlueBold("SQS ARNs: ")
 	for _, arn := range arns {
 		arnMsg += color.Bold(fmt.Sprintf("%s ", arn))
 	}
@@ -194,7 +194,7 @@ func printCLIAccessMsg(endPoint string, alias string) {
 
 	// Configure 'mc', following block prints platform specific information for minio client.
 	if color.IsTerminal() && !globalCLIContext.Anonymous {
-		logger.Info(color.Blue("\n命令行提示: ") + mcQuickStartGuide)
+		logger.Info(color.BlueBold("\n命令行提示: ") + mcQuickStartGuide)
 		mcMessage := fmt.Sprintf("$ mc alias set '%s' '%s' '%s' '%s'", alias,
 			endPoint, cred.AccessKey, cred.SecretKey)
 		logger.Info(fmt.Sprintf(getFormatStr(len(mcMessage), 3), mcMessage))
@@ -212,7 +212,7 @@ func getStorageInfoMsg(storageInfo StorageInfo) string {
 		}
 
 		diskInfo := fmt.Sprintf(" %d 在线, %d 离线. ", onlineDisks.Sum(), offlineDisks.Sum())
-		msg += color.Blue("状态:") + fmt.Sprintf(getFormatStr(len(diskInfo), 8), diskInfo)
+		msg += color.BlueBold("状态:") + fmt.Sprintf(getFormatStr(len(diskInfo), 8), diskInfo)
 		if len(mcMessage) > 0 {
 			msg = fmt.Sprintf("%s %s", mcMessage, msg)
 		}
@@ -228,7 +228,7 @@ func printStorageInfo(storageInfo StorageInfo) {
 }
 
 func printCacheStorageInfo(storageInfo CacheStorageInfo) {
-	msg := fmt.Sprintf("%s %s Free, %s Total", color.Blue("Cache Capacity:"),
+	msg := fmt.Sprintf("%s %s Free, %s Total", color.BlueBold("Cache Capacity:"),
 		humanize.IBytes(storageInfo.Free),
 		humanize.IBytes(storageInfo.Total))
 	logger.Info(msg)

@@ -76,17 +76,17 @@ func printName(names []pkix.AttributeTypeAndValue, buf *strings.Builder) []strin
 func CertificateText(cert *x509.Certificate) string {
 	var buf strings.Builder
 
-	buf.WriteString(color.Blue("\nCertificate:\n"))
+	buf.WriteString(color.BlueBold("\nCertificate:\n"))
 	if cert.SignatureAlgorithm != x509.UnknownSignatureAlgorithm {
-		buf.WriteString(color.Blue("%4sSignature Algorithm: ", "") + color.Bold(fmt.Sprintf("%s\n", cert.SignatureAlgorithm)))
+		buf.WriteString(color.BlueBold("%4sSignature Algorithm: ", "") + color.Bold(fmt.Sprintf("%s\n", cert.SignatureAlgorithm)))
 	}
 
 	// Issuer information
-	buf.WriteString(color.Blue("%4sIssuer: ", ""))
+	buf.WriteString(color.BlueBold("%4sIssuer: ", ""))
 	printName(cert.Issuer.Names, &buf)
 
 	// Validity information
-	buf.WriteString(color.Blue("%4sValidity\n", ""))
+	buf.WriteString(color.BlueBold("%4sValidity\n", ""))
 	buf.WriteString(color.Bold(fmt.Sprintf("%8sNot Before: %s\n", "", cert.NotBefore.Format(http.TimeFormat))))
 	buf.WriteString(color.Bold(fmt.Sprintf("%8sNot After : %s\n", "", cert.NotAfter.Format(http.TimeFormat))))
 
