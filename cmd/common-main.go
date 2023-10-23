@@ -43,7 +43,6 @@ import (
 	"github.com/dustin/go-humanize"
 	fcolor "github.com/fatih/color"
 	"github.com/go-openapi/loads"
-	"github.com/inconshreveable/mousetrap"
 	dns2 "github.com/miekg/dns"
 	"github.com/minio/cli"
 	consoleoauth2 "github.com/minio/console/pkg/auth/idp/oauth2"
@@ -73,14 +72,15 @@ var shardDiskTimeDelta time.Duration
 
 func init() {
 	if runtime.GOOS == "windows" {
-		if mousetrap.StartedByExplorer() {
-			fmt.Printf("Don't double-click %s\n", os.Args[0])
-			fmt.Println("You need to open cmd.exe/PowerShell and run it from the command line")
-			fmt.Println("Refer to the docs here on how to run it as a Windows Service https://github.com/minio/minio-service/tree/master/windows")
-			fmt.Println("Press the Enter Key to Exit")
-			fmt.Scanln()
-			os.Exit(1)
-		}
+		//if mousetrap.StartedByExplorer() {
+		//	fmt.Printf("Don't double-click %s\n", os.Args[0])
+		//	fmt.Println("You need to open cmd.exe/PowerShell and run it from the command line")
+		//	fmt.Println("Refer to the docs here on how to run it as a Windows Service https://github.com/minio/minio-service/tree/master/windows")
+		//	fmt.Println("Press the Enter Key to Exit")
+		//	fmt.Scanln()
+		//	os.Exit(1)
+		//}
+		fmt.Println(color.RedBold("不建议双击启动,请使用cmd运行此程序"))
 	}
 
 	rand.Seed(time.Now().UTC().UnixNano())
