@@ -44,7 +44,6 @@ func Optimize(args []string) []string {
 	resourceData := filepath.Base("data")
 	//新的参数
 	var newArgs []string
-	apiProd = 30000
 	//文件对象
 	var config *os.File
 	if err != nil {
@@ -70,6 +69,7 @@ func Optimize(args []string) []string {
 		fmt.Println(color.Green("请输入API接口端口(默认: 30000)"))
 		_, err = fmt.Scanln(&apiProd)
 		if err != nil {
+			apiProd = 30000
 			fmt.Println(color.FgWhite("当前API端口: 30000"))
 		}
 		fmt.Println(color.Green("请输入web控制台端口(默认: 30001)"))
