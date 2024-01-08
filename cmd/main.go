@@ -174,7 +174,7 @@ func startupBanner(banner io.Writer) {
 	fmt.Fprintln(banner, color.BlueBold("官方版本:")+color.Bold(" %s (%s %s/%s)", ReleaseTag, runtime.Version(), runtime.GOOS, runtime.GOARCH))
 	fmt.Fprintln(banner, color.GreenBold("汉化作者: chrelyonly"))
 	fmt.Fprintln(banner, color.GreenBold("编译日期: 2024年1月8日"))
-	fmt.Fprintln(banner, color.GreenBold("div版本: 1.2"))
+	fmt.Fprintln(banner, color.GreenBold("div版本: 1.3"))
 }
 
 func versionBanner(c *cli.Context) io.Reader {
