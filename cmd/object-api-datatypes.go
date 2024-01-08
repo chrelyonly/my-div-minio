@@ -20,6 +20,7 @@ package cmd
 import (
 	"io"
 	"math"
+	"net/http"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -149,10 +150,8 @@ type ObjectInfo struct {
 	// Date and time at which the object is no longer able to be cached
 	Expires time.Time
 
-	// CacheStatus sets status of whether this is a cache hit/miss
-	CacheStatus CacheStatusType
-	// CacheLookupStatus sets whether a cacheable response is present in the cache
-	CacheLookupStatus CacheStatusType
+	// Cache-Control - Specifies caching behavior along the request/reply chain
+	CacheControl string
 
 	// Specify object storage class
 	StorageClass string
@@ -205,6 +204,15 @@ type ObjectInfo struct {
 	ParityBlocks int
 }
 
+// ExpiresStr returns a stringified version of Expires header in http.TimeFormat
+func (o ObjectInfo) ExpiresStr() string {
+	var expires string
+	if !o.Expires.IsZero() {
+		expires = o.Expires.UTC().Format(http.TimeFormat)
+	}
+	return expires
+}
+
 // ArchiveInfo returns any saved zip archive meta information.
 // It will be decrypted if needed.
 func (o *ObjectInfo) ArchiveInfo() []byte {
@@ -245,8 +253,6 @@ func (o *ObjectInfo) Clone() (cinfo ObjectInfo) {
 		ContentType:                o.ContentType,
 		ContentEncoding:            o.ContentEncoding,
 		Expires:                    o.Expires,
-		CacheStatus:                o.CacheStatus,
-		CacheLookupStatus:          o.CacheLookupStatus,
 		StorageClass:               o.StorageClass,
 		ReplicationStatus:          o.ReplicationStatus,
 		UserTags:                   o.UserTags,
@@ -605,4 +611,43 @@ type CompleteMultipartUpload struct {
 type NewMultipartUploadResult struct {
 	UploadID     string
 	ChecksumAlgo string
+}
+
+type getObjectAttributesResponse struct {
+	ETag         string                    `xml:",omitempty"`
+	Checksum     *objectAttributesChecksum `xml:",omitempty"`
+	ObjectParts  *objectAttributesParts    `xml:",omitempty"`
+	StorageClass string                    `xml:",omitempty"`
+	ObjectSize   int64                     `xml:",omitempty"`
+}
+
+type objectAttributesChecksum struct {
+	ChecksumCRC32  string `xml:",omitempty"`
+	ChecksumCRC32C string `xml:",omitempty"`
+	ChecksumSHA1   string `xml:",omitempty"`
+	ChecksumSHA256 string `xml:",omitempty"`
+}
+
+type objectAttributesParts struct {
+	IsTruncated          bool
+	MaxParts             int
+	NextPartNumberMarker int
+	PartNumberMarker     int
+	PartsCount           int
+	Parts                []*objectAttributesPart `xml:"Part"`
+}
+
+type objectAttributesPart struct {
+	PartNumber     int
+	Size           int64
+	ChecksumCRC32  string `xml:",omitempty"`
+	ChecksumCRC32C string `xml:",omitempty"`
+	ChecksumSHA1   string `xml:",omitempty"`
+	ChecksumSHA256 string `xml:",omitempty"`
+}
+
+type objectAttributesErrorResponse struct {
+	ArgumentValue *string `xml:"ArgumentValue,omitempty"`
+	ArgumentName  *string `xml:"ArgumentName"`
+	APIErrorResponse
 }

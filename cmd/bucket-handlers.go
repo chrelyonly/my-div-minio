@@ -51,6 +51,7 @@ import (
 	sse "github.com/minio/minio/internal/bucket/encryption"
 	objectlock "github.com/minio/minio/internal/bucket/object/lock"
 	"github.com/minio/minio/internal/bucket/replication"
+	"github.com/minio/minio/internal/config/cache"
 	"github.com/minio/minio/internal/config/dns"
 	"github.com/minio/minio/internal/crypto"
 	"github.com/minio/minio/internal/event"
@@ -474,9 +475,6 @@ func (api objectAPIHandlers) DeleteMultipleObjectsHandler(w http.ResponseWriter,
 	}
 
 	deleteObjectsFn := objectAPI.DeleteObjects
-	if api.CacheAPI() != nil {
-		deleteObjectsFn = api.CacheAPI().DeleteObjects
-	}
 
 	// Return Malformed XML as S3 spec if the number of objects is empty
 	if len(deleteObjectsReq.Objects) == 0 || len(deleteObjectsReq.Objects) > maxDeleteList {
@@ -486,9 +484,6 @@ func (api objectAPIHandlers) DeleteMultipleObjectsHandler(w http.ResponseWriter,
 
 	objectsToDelete := map[ObjectToDelete]int{}
 	getObjectInfoFn := objectAPI.GetObjectInfo
-	if api.CacheAPI() != nil {
-		getObjectInfoFn = api.CacheAPI().GetObjectInfo
-	}
 
 	var (
 		hasLockEnabled bool
@@ -673,6 +668,8 @@ func (api objectAPIHandlers) DeleteMultipleObjectsHandler(w http.ResponseWriter,
 		if dobj.ObjectName == "" {
 			continue
 		}
+
+		defer globalCacheConfig.Delete(bucket, dobj.ObjectName)
 
 		if replicateDeletes && (dobj.DeleteMarkerReplicationStatus() == replication.Pending || dobj.VersionPurgeStatus() == Pending) {
 			// copy so we can re-add null ID.
@@ -989,7 +986,7 @@ func (api objectAPIHandlers) PostPolicyBucketHandler(w http.ResponseWriter, r *h
 		}
 
 		var b bytes.Buffer
-		if fileName == "" {
+		if name != "file" {
 			if http.CanonicalHeaderKey(name) == http.CanonicalHeaderKey("x-minio-fanout-list") {
 				dec := json.NewDecoder(part)
 
@@ -1045,11 +1042,14 @@ func (api objectAPIHandlers) PostPolicyBucketHandler(w http.ResponseWriter, r *h
 		break
 	}
 
-	if _, ok := formValues["Key"]; !ok {
+	if keyName, ok := formValues["Key"]; !ok {
 		apiErr := errorCodes.ToAPIErr(ErrMalformedPOSTRequest)
 		apiErr.Description = fmt.Sprintf("%s (%v)", apiErr.Description, errors.New("The name of the uploaded key is missing"))
 		writeErrorResponse(ctx, w, apiErr, r.URL)
 		return
+	} else if fileName == "" && len(keyName) >= 1 {
+		// if we can't get fileName. We use keyName[0] to fileName
+		fileName = keyName[0]
 	}
 
 	if fileName == "" {
@@ -1195,7 +1195,7 @@ func (api objectAPIHandlers) PostPolicyBucketHandler(w http.ResponseWriter, r *h
 	})
 
 	var opts ObjectOptions
-	opts, err = putOpts(ctx, r, bucket, object, metadata)
+	opts, err = putOptsFromReq(ctx, r, bucket, object, metadata)
 	if err != nil {
 		writeErrorResponseHeadersOnly(w, toAPIError(ctx, err))
 		return
@@ -1346,6 +1346,22 @@ func (api objectAPIHandlers) PostPolicyBucketHandler(w http.ResponseWriter, r *h
 					continue
 				}
 
+				asize, err := objInfo.GetActualSize()
+				if err != nil {
+					asize = objInfo.Size
+				}
+
+				globalCacheConfig.Set(&cache.ObjectInfo{
+					Key:          objInfo.Name,
+					Bucket:       objInfo.Bucket,
+					ETag:         getDecryptedETag(formValues, objInfo, false),
+					ModTime:      objInfo.ModTime,
+					Expires:      objInfo.Expires.UTC().Format(http.TimeFormat),
+					CacheControl: objInfo.CacheControl,
+					Metadata:     cleanReservedKeys(objInfo.UserDefined),
+					Size:         asize,
+				})
+
 				fanOutResp = append(fanOutResp, minio.PutObjectFanOutResponse{
 					Key:          objInfo.Name,
 					ETag:         getDecryptedETag(formValues, objInfo, false),
@@ -1402,10 +1418,12 @@ func (api objectAPIHandlers) PostPolicyBucketHandler(w http.ResponseWriter, r *h
 		return
 	}
 
+	etag := getDecryptedETag(formValues, objInfo, false)
+
 	// We must not use the http.Header().Set method here because some (broken)
 	// clients expect the ETag header key to be literally "ETag" - not "Etag" (case-sensitive).
 	// Therefore, we have to set the ETag directly as map entry.
-	w.Header()[xhttp.ETag] = []string{`"` + objInfo.ETag + `"`}
+	w.Header()[xhttp.ETag] = []string{`"` + etag + `"`}
 
 	// Set the relevant version ID as part of the response header.
 	if objInfo.VersionID != "" && objInfo.VersionID != nullVersionID {
@@ -1415,6 +1433,22 @@ func (api objectAPIHandlers) PostPolicyBucketHandler(w http.ResponseWriter, r *h
 	if obj := getObjectLocation(r, globalDomainNames, bucket, object); obj != "" {
 		w.Header().Set(xhttp.Location, obj)
 	}
+
+	asize, err := objInfo.GetActualSize()
+	if err != nil {
+		asize = objInfo.Size
+	}
+
+	defer globalCacheConfig.Set(&cache.ObjectInfo{
+		Key:          objInfo.Name,
+		Bucket:       objInfo.Bucket,
+		ETag:         etag,
+		ModTime:      objInfo.ModTime,
+		Expires:      objInfo.ExpiresStr(),
+		CacheControl: objInfo.CacheControl,
+		Metadata:     cleanReservedKeys(objInfo.UserDefined),
+		Size:         asize,
+	})
 
 	// Notify object created event.
 	defer sendEvent(eventArgs{
@@ -1623,9 +1657,11 @@ func (api objectAPIHandlers) DeleteBucketHandler(w http.ResponseWriter, r *http.
 	}
 
 	// Return an error if the bucket does not exist
-	if _, err := objectAPI.GetBucketInfo(ctx, bucket, BucketOptions{}); err != nil && !forceDelete {
-		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL)
-		return
+	if !forceDelete {
+		if _, err := objectAPI.GetBucketInfo(ctx, bucket, BucketOptions{}); err != nil {
+			writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL)
+			return
+		}
 	}
 
 	// Attempt to delete bucket.

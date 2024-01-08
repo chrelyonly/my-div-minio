@@ -310,6 +310,7 @@ const (
 	ErrSiteReplicationBucketMetaError
 	ErrSiteReplicationIAMError
 	ErrSiteReplicationConfigMissing
+	ErrSiteReplicationIAMConfigMismatch
 
 	// Pool rebalance errors
 	ErrAdminRebalanceAlreadyStarted
@@ -428,6 +429,9 @@ const (
 	// Lambda functions
 	ErrLambdaARNInvalid
 	ErrLambdaARNNotFound
+
+	// New Codes for GetObjectAttributes and GetObjectVersionAttributes
+	ErrInvalidAttributeName
 
 	apiErrCodeEnd // This is used only for the testing code
 )
@@ -1512,6 +1516,11 @@ var errorCodes = errorCodeMap{
 		Description:    "Site not found in site replication configuration",
 		HTTPStatusCode: http.StatusBadRequest,
 	},
+	ErrSiteReplicationIAMConfigMismatch: {
+		Code:           "XMinioSiteReplicationIAMConfigMismatch",
+		Description:    "IAM configuration mismatch between sites",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
 	ErrAdminRebalanceAlreadyStarted: {
 		Code:           "XMinioAdminRebalanceAlreadyStarted",
 		Description:    "Pool rebalance is already started",
@@ -2056,6 +2065,11 @@ var errorCodes = errorCodeMap{
 		Code:           "XMinioPolicyNotAttached",
 		Description:    "The specified policy is not found.",
 		HTTPStatusCode: http.StatusNotFound,
+	},
+	ErrInvalidAttributeName: {
+		Code:           "InvalidArgument",
+		Description:    "Invalid attribute name specified.",
+		HTTPStatusCode: http.StatusBadRequest,
 	},
 	// Add your error structure here.
 }

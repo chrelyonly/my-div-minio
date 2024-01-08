@@ -53,6 +53,7 @@ const (
 
 	// memory stats
 	memUsed      MetricName = "used"
+	memUsedPerc  MetricName = "used_perc"
 	memFree      MetricName = "free"
 	memShared    MetricName = "shared"
 	memBuffers   MetricName = "buffers"
@@ -60,21 +61,25 @@ const (
 	memAvailable MetricName = "available"
 
 	// cpu stats
-	cpuUser   MetricName = "user"
-	cpuSystem MetricName = "system"
-	cpuIOWait MetricName = "iowait"
-	cpuIdle   MetricName = "idle"
-	cpuNice   MetricName = "nice"
-	cpuSteal  MetricName = "steal"
-	cpuLoad1  MetricName = "load1"
-	cpuLoad5  MetricName = "load5"
-	cpuLoad15 MetricName = "load15"
+	cpuUser       MetricName = "user"
+	cpuSystem     MetricName = "system"
+	cpuIOWait     MetricName = "iowait"
+	cpuIdle       MetricName = "idle"
+	cpuNice       MetricName = "nice"
+	cpuSteal      MetricName = "steal"
+	cpuLoad1      MetricName = "load1"
+	cpuLoad5      MetricName = "load5"
+	cpuLoad15     MetricName = "load15"
+	cpuLoad1Perc  MetricName = "load1_perc"
+	cpuLoad5Perc  MetricName = "load5_perc"
+	cpuLoad15Perc MetricName = "load15_perc"
 )
 
 var (
 	resourceCollector *minioResourceCollector
 	// resourceMetricsMap is a map of subsystem to its metrics
-	resourceMetricsMap map[MetricSubsystem]ResourceMetrics
+	resourceMetricsMap   map[MetricSubsystem]ResourceMetrics
+	resourceMetricsMapMu sync.RWMutex
 	// resourceMetricsHelpMap maps metric name to its help string
 	resourceMetricsHelpMap map[MetricName]string
 	resourceMetricsGroups  []*MetricsGroup
@@ -125,6 +130,7 @@ func init() {
 		interfaceTxErrors: "Transmit errors in " + interval,
 		total:             "Total memory on the node",
 		memUsed:           "Used memory on the node",
+		memUsedPerc:       "Used memory percentage on the node",
 		memFree:           "Free memory on the node",
 		memShared:         "Shared memory on the node",
 		memBuffers:        "Buffers memory on the node",
@@ -150,6 +156,9 @@ func init() {
 		cpuLoad1:          "CPU load average 1min",
 		cpuLoad5:          "CPU load average 5min",
 		cpuLoad15:         "CPU load average 15min",
+		cpuLoad1Perc:      "CPU load average 1min (perentage)",
+		cpuLoad5Perc:      "CPU load average 5min (percentage)",
+		cpuLoad15Perc:     "CPU load average 15min (percentage)",
 	}
 	resourceMetricsGroups = []*MetricsGroup{
 		getResourceMetrics(),
@@ -159,6 +168,8 @@ func init() {
 }
 
 func updateResourceMetrics(subSys MetricSubsystem, name MetricName, val float64, labels map[string]string, isCumulative bool) {
+	resourceMetricsMapMu.Lock()
+	defer resourceMetricsMapMu.Unlock()
 	subsysMetrics, found := resourceMetricsMap[subSys]
 	if !found {
 		subsysMetrics = ResourceMetrics{}
@@ -241,10 +252,10 @@ func collectDriveMetrics(m madmin.RealtimeMetrics) {
 	}
 
 	globalLocalDrivesMu.RLock()
-	gld := globalLocalDrives
+	localDrives := globalLocalDrives
 	globalLocalDrivesMu.RUnlock()
 
-	for _, d := range gld {
+	for _, d := range localDrives {
 		labels := map[string]string{"drive": d.Endpoint().RawPath}
 		di, err := d.DiskInfo(GlobalContext, false)
 		if err == nil {
@@ -280,6 +291,8 @@ func collectLocalResourceMetrics() {
 				stats := hm.Mem.Info
 				updateResourceMetrics(memSubsystem, total, float64(stats.Total), labels, false)
 				updateResourceMetrics(memSubsystem, memUsed, float64(stats.Used), labels, false)
+				perc := math.Round(float64(stats.Used*100*100)/float64(stats.Total)) / 100
+				updateResourceMetrics(memSubsystem, memUsedPerc, perc, labels, false)
 				updateResourceMetrics(memSubsystem, memFree, float64(stats.Free), labels, false)
 				updateResourceMetrics(memSubsystem, memShared, float64(stats.Shared), labels, false)
 				updateResourceMetrics(memSubsystem, memBuffers, float64(stats.Buffers), labels, false)
@@ -309,6 +322,14 @@ func collectLocalResourceMetrics() {
 					updateResourceMetrics(cpuSubsystem, cpuLoad1, ls.Load1, labels, false)
 					updateResourceMetrics(cpuSubsystem, cpuLoad5, ls.Load5, labels, false)
 					updateResourceMetrics(cpuSubsystem, cpuLoad15, ls.Load15, labels, false)
+					if hm.CPU.CPUCount > 0 {
+						perc := math.Round(ls.Load1*100*100/float64(hm.CPU.CPUCount)) / 100
+						updateResourceMetrics(cpuSubsystem, cpuLoad1Perc, perc, labels, false)
+						perc = math.Round(ls.Load5*100*100/float64(hm.CPU.CPUCount)) / 100
+						updateResourceMetrics(cpuSubsystem, cpuLoad5Perc, perc, labels, false)
+						perc = math.Round(ls.Load15*100*100/float64(hm.CPU.CPUCount)) / 100
+						updateResourceMetrics(cpuSubsystem, cpuLoad15Perc, perc, labels, false)
+					}
 				}
 			}
 			break // only one host expected
@@ -320,7 +341,9 @@ func collectLocalResourceMetrics() {
 
 // startResourceMetricsCollection - starts the job for collecting resource metrics
 func startResourceMetricsCollection() {
+	resourceMetricsMapMu.Lock()
 	resourceMetricsMap = map[MetricSubsystem]ResourceMetrics{}
+	resourceMetricsMapMu.Unlock()
 	metricsTimer := time.NewTimer(resourceMetricsCollectionInterval)
 	defer metricsTimer.Stop()
 
@@ -382,12 +405,11 @@ func newMinioResourceCollector(metricsGroups []*MetricsGroup) *minioResourceColl
 func prepareResourceMetrics(rm ResourceMetric, subSys MetricSubsystem, requireAvgMax bool) []Metric {
 	help := resourceMetricsHelpMap[rm.Name]
 	name := rm.Name
-
-	metrics := []Metric{}
+	metrics := make([]Metric, 0, 3)
 	metrics = append(metrics, Metric{
 		Description:    getResourceMetricDescription(subSys, name, help),
 		Value:          rm.Current,
-		VariableLabels: rm.Labels,
+		VariableLabels: cloneMSS(rm.Labels),
 	})
 
 	if requireAvgMax {
@@ -396,7 +418,7 @@ func prepareResourceMetrics(rm ResourceMetric, subSys MetricSubsystem, requireAv
 		metrics = append(metrics, Metric{
 			Description:    getResourceMetricDescription(subSys, avgName, avgHelp),
 			Value:          math.Round(rm.Avg*100) / 100,
-			VariableLabels: rm.Labels,
+			VariableLabels: cloneMSS(rm.Labels),
 		})
 
 		maxName := MetricName(fmt.Sprintf("%s_max", name))
@@ -404,7 +426,7 @@ func prepareResourceMetrics(rm ResourceMetric, subSys MetricSubsystem, requireAv
 		metrics = append(metrics, Metric{
 			Description:    getResourceMetricDescription(subSys, maxName, maxHelp),
 			Value:          rm.Max,
-			VariableLabels: rm.Labels,
+			VariableLabels: cloneMSS(rm.Labels),
 		})
 	}
 
@@ -429,6 +451,8 @@ func getResourceMetrics() *MetricsGroup {
 		metrics := []Metric{}
 
 		subSystems := []MetricSubsystem{interfaceSubsystem, memSubsystem, driveSubsystem, cpuSubsystem}
+		resourceMetricsMapMu.RLock()
+		defer resourceMetricsMapMu.RUnlock()
 		for _, subSys := range subSystems {
 			stats, found := resourceMetricsMap[subSys]
 			if found {

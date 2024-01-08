@@ -478,10 +478,7 @@ func EncryptRequest(content io.Reader, r *http.Request, bucket, object string, m
 func decryptObjectMeta(key []byte, bucket, object string, metadata map[string]string) ([]byte, error) {
 	switch kind, _ := crypto.IsEncrypted(metadata); kind {
 	case crypto.S3:
-		var KMS kms.KMS = GlobalKMS
-		if isCacheEncrypted(metadata) {
-			KMS = globalCacheKMS
-		}
+		KMS := GlobalKMS
 		if KMS == nil {
 			return nil, errKMSNotConfigured
 		}
@@ -1083,6 +1080,30 @@ func (o *ObjectInfo) metadataDecrypter() objectMetaDecryptFn {
 		mac.Write([]byte(baseKey))
 		return sio.DecryptBuffer(nil, input, sio.Config{Key: mac.Sum(nil), CipherSuites: fips.DARECiphers()})
 	}
+}
+
+// decryptChecksums will attempt to decode checksums and return it/them if set.
+// if part > 0, and we have the checksum for the part that will be returned.
+func (o *ObjectInfo) decryptPartsChecksums() {
+	data := o.Checksum
+	if len(data) == 0 {
+		return
+	}
+	if _, encrypted := crypto.IsEncrypted(o.UserDefined); encrypted {
+		decrypted, err := o.metadataDecrypter()("object-checksum", data)
+		if err != nil {
+			logger.LogIf(GlobalContext, err)
+			return
+		}
+		data = decrypted
+	}
+	cs := hash.ReadPartCheckSums(data)
+	if len(cs) == len(o.Parts) {
+		for i := range o.Parts {
+			o.Parts[i].Checksums = cs[i]
+		}
+	}
+	return
 }
 
 // metadataEncryptFn provides an encryption function for metadata.

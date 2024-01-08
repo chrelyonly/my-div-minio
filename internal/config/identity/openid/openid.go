@@ -36,6 +36,7 @@ import (
 	"github.com/minio/minio/internal/config"
 	"github.com/minio/minio/internal/config/identity/openid/provider"
 	"github.com/minio/minio/internal/hash/sha256"
+	"github.com/minio/pkg/v2/env"
 	xnet "github.com/minio/pkg/v2/net"
 	"github.com/minio/pkg/v2/policy"
 )
@@ -599,8 +600,12 @@ func (r Config) GetRoleInfo() map[arn.ARN]string {
 
 // GetDefaultExpiration - returns the expiration seconds expected.
 func GetDefaultExpiration(dsecs string) (time.Duration, error) {
-	defaultExpiryDuration := time.Duration(60) * time.Minute // Defaults to 1hr.
-	if dsecs != "" {
+	timeout := env.Get(config.EnvMinioStsDuration, "")
+	defaultExpiryDuration, err := time.ParseDuration(timeout)
+	if err != nil {
+		defaultExpiryDuration = time.Hour
+	}
+	if timeout == "" && dsecs != "" {
 		expirySecs, err := strconv.ParseInt(dsecs, 10, 64)
 		if err != nil {
 			return 0, auth.ErrInvalidDuration
@@ -609,11 +614,18 @@ func GetDefaultExpiration(dsecs string) (time.Duration, error) {
 		// The duration, in seconds, of the role session.
 		// The value can range from 900 seconds (15 minutes)
 		// up to 365 days.
-		if expirySecs < 900 || expirySecs > 31536000 {
+		if expirySecs < config.MinExpiration || expirySecs > config.MaxExpiration {
 			return 0, auth.ErrInvalidDuration
 		}
 
 		defaultExpiryDuration = time.Duration(expirySecs) * time.Second
+	} else if timeout == "" && dsecs == "" {
+		return time.Hour, nil
 	}
+
+	if defaultExpiryDuration.Seconds() < config.MinExpiration || defaultExpiryDuration.Seconds() > config.MaxExpiration {
+		return 0, auth.ErrInvalidDuration
+	}
+
 	return defaultExpiryDuration, nil
 }

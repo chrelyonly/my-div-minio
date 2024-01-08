@@ -35,6 +35,7 @@ import (
 	sse "github.com/minio/minio/internal/bucket/encryption"
 	objectlock "github.com/minio/minio/internal/bucket/object/lock"
 	"github.com/minio/minio/internal/bucket/replication"
+	"github.com/minio/minio/internal/config/cache"
 	"github.com/minio/minio/internal/config/dns"
 	"github.com/minio/minio/internal/config/storageclass"
 	"github.com/minio/minio/internal/crypto"
@@ -129,7 +130,7 @@ func (api objectAPIHandlers) NewMultipartUploadHandler(w http.ResponseWriter, r 
 	}
 
 	// Extract metadata that needs to be saved.
-	metadata, err := extractMetadata(ctx, r)
+	metadata, err := extractMetadataFromReq(ctx, r)
 	if err != nil {
 		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL)
 		return
@@ -143,14 +144,14 @@ func (api objectAPIHandlers) NewMultipartUploadHandler(w http.ResponseWriter, r 
 
 		metadata[xhttp.AmzObjectTagging] = objTags
 	}
-
+	if r.Header.Get(xhttp.AmzBucketReplicationStatus) == replication.Replica.String() {
+		metadata[ReservedMetadataPrefixLower+ReplicaStatus] = replication.Replica.String()
+		metadata[ReservedMetadataPrefixLower+ReplicaTimestamp] = UTCNow().Format(time.RFC3339Nano)
+	}
 	retPerms := isPutActionAllowed(ctx, getRequestAuthType(r), bucket, object, r, policy.PutObjectRetentionAction)
 	holdPerms := isPutActionAllowed(ctx, getRequestAuthType(r), bucket, object, r, policy.PutObjectLegalHoldAction)
 
 	getObjectInfo := objectAPI.GetObjectInfo
-	if api.CacheAPI() != nil {
-		getObjectInfo = api.CacheAPI().GetObjectInfo
-	}
 
 	retentionMode, retentionDate, legalHold, s3Err := checkPutObjectLockAllowed(ctx, r, bucket, object, getObjectInfo, retPerms, holdPerms)
 	if s3Err == ErrNone && retentionMode.Valid() {
@@ -183,7 +184,7 @@ func (api objectAPIHandlers) NewMultipartUploadHandler(w http.ResponseWriter, r 
 		metadata[ReservedMetadataPrefix+"compression"] = compressionAlgorithmV2
 	}
 
-	opts, err := putOpts(ctx, r, bucket, object, metadata)
+	opts, err := putOptsFromReq(ctx, r, bucket, object, metadata)
 	if err != nil {
 		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL)
 		return
@@ -210,9 +211,6 @@ func (api objectAPIHandlers) NewMultipartUploadHandler(w http.ResponseWriter, r 
 	}
 
 	newMultipartUpload := objectAPI.NewMultipartUpload
-	if api.CacheAPI() != nil {
-		newMultipartUpload = api.CacheAPI().NewMultipartUpload
-	}
 
 	res, err := newMultipartUpload(ctx, bucket, object, opts)
 	if err != nil {
@@ -329,9 +327,6 @@ func (api objectAPIHandlers) CopyObjectPartHandler(w http.ResponseWriter, r *htt
 	}
 
 	getObjectNInfo := objectAPI.GetObjectNInfo
-	if api.CacheAPI() != nil {
-		getObjectNInfo = api.CacheAPI().GetObjectNInfo
-	}
 
 	// Get request range.
 	var rs *HTTPRangeSpec
@@ -542,9 +537,7 @@ func (api objectAPIHandlers) CopyObjectPartHandler(w http.ResponseWriter, r *htt
 
 	srcInfo.PutObjReader = pReader
 	copyObjectPart := objectAPI.CopyObjectPart
-	if api.CacheAPI() != nil {
-		copyObjectPart = api.CacheAPI().CopyObjectPart
-	}
+
 	// Copy source object to destination, if source and destination
 	// object is same then only metadata is updated.
 	partInfo, err := copyObjectPart(ctx, srcBucket, srcObject, dstBucket, dstObject, uploadID, partID,
@@ -735,7 +728,14 @@ func (api objectAPIHandlers) PutObjectPartHandler(w http.ResponseWriter, r *http
 		sha256hex = ""
 	}
 
-	hashReader, err := hash.NewReader(ctx, reader, size, md5hex, sha256hex, actualSize)
+	hashReader, err := hash.NewReaderWithOpts(ctx, reader, hash.Options{
+		Size:       size,
+		MD5Hex:     md5hex,
+		SHA256Hex:  sha256hex,
+		ActualSize: actualSize,
+		DisableMD5: false,
+		ForceMD5:   nil,
+	})
 	if err != nil {
 		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL)
 		return
@@ -756,7 +756,7 @@ func (api objectAPIHandlers) PutObjectPartHandler(w http.ResponseWriter, r *http
 			return
 		}
 
-		opts, err = putOpts(ctx, r, bucket, object, mi.UserDefined)
+		opts, err = putOptsFromReq(ctx, r, bucket, object, mi.UserDefined)
 		if err != nil {
 			writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL)
 			return
@@ -821,9 +821,6 @@ func (api objectAPIHandlers) PutObjectPartHandler(w http.ResponseWriter, r *http
 	opts.IndexCB = idxCb
 
 	putObjectPart := objectAPI.PutObjectPart
-	if api.CacheAPI() != nil {
-		putObjectPart = api.CacheAPI().PutObjectPart
-	}
 
 	partInfo, err := putObjectPart(ctx, bucket, object, uploadID, partID, pReader, opts)
 	if err != nil {
@@ -934,9 +931,6 @@ func (api objectAPIHandlers) CompleteMultipartUploadHandler(w http.ResponseWrite
 	}
 
 	completeMultiPartUpload := objectAPI.CompleteMultipartUpload
-	if api.CacheAPI() != nil {
-		completeMultiPartUpload = api.CacheAPI().CompleteMultipartUpload
-	}
 
 	versioned := globalBucketVersioningSys.PrefixEnabled(bucket, object)
 	suspended := globalBucketVersioningSys.PrefixSuspended(bucket, object)
@@ -1025,6 +1019,22 @@ func (api objectAPIHandlers) CompleteMultipartUploadHandler(w http.ResponseWrite
 	}
 	sendEvent(evt)
 
+	asize, err := objInfo.GetActualSize()
+	if err != nil {
+		asize = objInfo.Size
+	}
+
+	defer globalCacheConfig.Set(&cache.ObjectInfo{
+		Key:          objInfo.Name,
+		Bucket:       objInfo.Bucket,
+		ETag:         objInfo.ETag,
+		ModTime:      objInfo.ModTime,
+		Expires:      objInfo.ExpiresStr(),
+		CacheControl: objInfo.CacheControl,
+		Size:         asize,
+		Metadata:     cleanReservedKeys(objInfo.UserDefined),
+	})
+
 	if objInfo.NumVersions > dataScannerExcessiveVersionsThreshold {
 		evt.EventName = event.ObjectManyVersions
 		sendEvent(evt)
@@ -1058,9 +1068,6 @@ func (api objectAPIHandlers) AbortMultipartUploadHandler(w http.ResponseWriter, 
 		return
 	}
 	abortMultipartUpload := objectAPI.AbortMultipartUpload
-	if api.CacheAPI() != nil {
-		abortMultipartUpload = api.CacheAPI().AbortMultipartUpload
-	}
 
 	if s3Error := checkRequestAuthType(ctx, r, policy.AbortMultipartUploadAction, bucket, object); s3Error != ErrNone {
 		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL)

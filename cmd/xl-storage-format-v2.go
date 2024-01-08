@@ -328,6 +328,18 @@ func (x xlMetaV2VersionHeader) sortsBefore(o xlMetaV2VersionHeader) bool {
 	return false
 }
 
+func (j xlMetaV2Version) getDataDir() string {
+	if j.Valid() {
+		switch j.Type {
+		case LegacyType:
+			return j.ObjectV1.DataDir
+		case ObjectType:
+			return uuid.UUID(j.ObjectV2.DataDir).String()
+		}
+	}
+	return ""
+}
+
 // Valid xl meta xlMetaV2Version is valid
 func (j xlMetaV2Version) Valid() bool {
 	if !j.Type.valid() {
@@ -522,6 +534,10 @@ func (j xlMetaV2Object) UsesDataDir() bool {
 func (j xlMetaV2Object) InlineData() bool {
 	_, ok := j.MetaSys[ReservedMetadataPrefixLower+"inline-data"]
 	return ok
+}
+
+func (j *xlMetaV2Object) ResetInlineData() {
+	delete(j.MetaSys, ReservedMetadataPrefixLower+"inline-data")
 }
 
 const (
@@ -1170,6 +1186,22 @@ func (x *xlMetaV2) AppendTo(dst []byte) ([]byte, error) {
 	return append(dst, x.data...), nil
 }
 
+const emptyUUID = "00000000-0000-0000-0000-000000000000"
+
+func (x *xlMetaV2) findVersionStr(key string) (idx int, ver *xlMetaV2Version, err error) {
+	if key == nullVersionID {
+		key = ""
+	}
+	var u uuid.UUID
+	if key != "" {
+		u, err = uuid.Parse(key)
+		if err != nil {
+			return -1, nil, errFileVersionNotFound
+		}
+	}
+	return x.findVersion(u)
+}
+
 func (x *xlMetaV2) findVersion(key [16]byte) (idx int, ver *xlMetaV2Version, err error) {
 	for i, ver := range x.versions {
 		if key == ver.header.VersionID {
@@ -1378,10 +1410,11 @@ func (x *xlMetaV2) DeleteVersion(fi FileInfo) (string, error) {
 				err = x.setIdx(i, *ver)
 				return "", err
 			}
-			var err error
 			x.versions = append(x.versions[:i], x.versions[i+1:]...)
 			if fi.MarkDeleted && (fi.VersionPurgeStatus().Empty() || (fi.VersionPurgeStatus() != Complete)) {
 				err = x.addVersion(ventry)
+			} else if fi.Deleted && uv.String() == emptyUUID {
+				return "", x.addVersion(ventry)
 			}
 			return "", err
 		case ObjectType:
@@ -1414,6 +1447,7 @@ func (x *xlMetaV2) DeleteVersion(fi FileInfo) (string, error) {
 			err = x.setIdx(i, *ver)
 		case fi.TransitionStatus == lifecycle.TransitionComplete:
 			ver.ObjectV2.SetTransition(fi)
+			ver.ObjectV2.ResetInlineData()
 			err = x.setIdx(i, *ver)
 		default:
 			x.versions = append(x.versions[:i], x.versions[i+1:]...)

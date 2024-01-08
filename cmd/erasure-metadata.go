@@ -158,6 +158,7 @@ func (fi FileInfo) ToObjectInfo(bucket, object string, versioned bool) ObjectInf
 		ContentEncoding:  fi.Metadata["content-encoding"],
 		NumVersions:      fi.NumVersions,
 		SuccessorModTime: fi.SuccessorModTime,
+		CacheControl:     fi.Metadata["cache-control"],
 	}
 
 	if exp, ok := fi.Metadata["expires"]; ok {
@@ -180,6 +181,11 @@ func (fi FileInfo) ToObjectInfo(bucket, object string, versioned bool) ObjectInf
 	objInfo.ReplicationStatusInternal = fi.ReplicationState.ReplicationStatusInternal
 	objInfo.VersionPurgeStatusInternal = fi.ReplicationState.VersionPurgeStatusInternal
 	objInfo.ReplicationStatus = fi.ReplicationStatus()
+	if objInfo.ReplicationStatus.Empty() { // overlay x-amx-replication-status if present for replicas
+		if st, ok := fi.Metadata[xhttp.AmzBucketReplicationStatus]; ok && st == string(replication.Replica) {
+			objInfo.ReplicationStatus = replication.StatusType(st)
+		}
+	}
 	objInfo.VersionPurgeStatus = fi.VersionPurgeStatus()
 
 	objInfo.TransitionedObject = TransitionedObject{
