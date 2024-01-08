@@ -30,11 +30,17 @@ func Optimize(args []string) []string {
 	//打印当前时间
 	currentTime := time.Now()
 	fmt.Println(color.GreenBold("当前时间: " + currentTime.Format("2006-01-02 15:04:05")))
-	//获取当前程序目录下的config.json文件
-	configPath := filepath.Base("config.json")
+	var configPath = ""
+	//判断是否传入配置文件路径
+	if len(args) > 1 {
+		configPath = args[1] + "/config.json"
+	} else {
+		//获取当前程序目录下的config.json文件
+		configPath = "./config.json"
+	}
 	//判断文件是否存在
 	_, err := os.Stat(configPath)
-
+	fmt.Println(color.GreenBold("读取到配置文件,路径: " + configPath))
 	//配置信息
 	var userName string
 	var password string
