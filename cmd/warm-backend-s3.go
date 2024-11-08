@@ -25,18 +25,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/minio/madmin-go/v3"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
-)
-
-// getRemoteTierTargetInstanceTransport contains a singleton roundtripper.
-var (
-	getRemoteTierTargetInstanceTransport     http.RoundTripper
-	getRemoteTierTargetInstanceTransportOnce sync.Once
 )
 
 type warmBackendS3 struct {
@@ -64,12 +56,17 @@ func (s3 *warmBackendS3) getDest(object string) string {
 	return destObj
 }
 
-func (s3 *warmBackendS3) Put(ctx context.Context, object string, r io.Reader, length int64) (remoteVersionID, error) {
+func (s3 *warmBackendS3) PutWithMeta(ctx context.Context, object string, r io.Reader, length int64, meta map[string]string) (remoteVersionID, error) {
 	res, err := s3.client.PutObject(ctx, s3.Bucket, s3.getDest(object), r, length, minio.PutObjectOptions{
 		SendContentMd5: true,
 		StorageClass:   s3.StorageClass,
+		UserMetadata:   meta,
 	})
 	return remoteVersionID(res.VersionID), s3.ToObjectError(err, object)
+}
+
+func (s3 *warmBackendS3) Put(ctx context.Context, object string, r io.Reader, length int64) (remoteVersionID, error) {
+	return s3.PutWithMeta(ctx, object, r, length, map[string]string{})
 }
 
 func (s3 *warmBackendS3) Get(ctx context.Context, object string, rv remoteVersionID, opts WarmBackendGetOpts) (io.ReadCloser, error) {
@@ -162,13 +159,10 @@ func newWarmBackendS3(conf madmin.TierS3, tier string) (*warmBackendS3, error) {
 	default:
 		return nil, errors.New("insufficient parameters for S3 backend authentication")
 	}
-	getRemoteTierTargetInstanceTransportOnce.Do(func() {
-		getRemoteTierTargetInstanceTransport = NewHTTPTransportWithTimeout(10 * time.Minute)
-	})
 	opts := &minio.Options{
 		Creds:     creds,
 		Secure:    u.Scheme == "https",
-		Transport: getRemoteTierTargetInstanceTransport,
+		Transport: globalRemoteTargetTransport,
 	}
 	client, err := minio.New(u.Host, opts)
 	if err != nil {

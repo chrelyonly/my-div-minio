@@ -76,6 +76,12 @@ var (
 		`账号密码长度最少3,密码最少长度8`,
 	)
 
+	ErrInvalidRootUserCredentials = newErrFn(
+		"Invalid credentials",
+		"Please provide correct credentials",
+		EnvRootUser+` length should be at least 3, and `+EnvRootPassword+` length at least 8 characters`,
+	)
+
 	ErrMissingEnvCredentialRootUser = newErrFn(
 		"Missing credential environment variable, \""+EnvRootUser+"\"",
 		"Environment variable \""+EnvRootUser+"\" is missing",

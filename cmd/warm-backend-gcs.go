@@ -47,21 +47,28 @@ func (gcs *warmBackendGCS) getDest(object string) string {
 	return destObj
 }
 
-// FIXME: add support for remote version ID in GCS remote tier and remove this.
-// Currently it's a no-op.
-
-func (gcs *warmBackendGCS) Put(ctx context.Context, key string, data io.Reader, length int64) (remoteVersionID, error) {
+func (gcs *warmBackendGCS) PutWithMeta(ctx context.Context, key string, data io.Reader, length int64, meta map[string]string) (remoteVersionID, error) {
 	object := gcs.client.Bucket(gcs.Bucket).Object(gcs.getDest(key))
-	// TODO: set storage class
 	w := object.NewWriter(ctx)
 	if gcs.StorageClass != "" {
 		w.ObjectAttrs.StorageClass = gcs.StorageClass
 	}
+	w.ObjectAttrs.Metadata = meta
+	if _, err := xioutil.Copy(w, data); err != nil {
+		return "", gcsToObjectError(err, gcs.Bucket, key)
+	}
+
 	if _, err := xioutil.Copy(w, data); err != nil {
 		return "", gcsToObjectError(err, gcs.Bucket, key)
 	}
 
 	return "", w.Close()
+}
+
+// FIXME: add support for remote version ID in GCS remote tier and remove this.
+// Currently it's a no-op.
+func (gcs *warmBackendGCS) Put(ctx context.Context, key string, data io.Reader, length int64) (remoteVersionID, error) {
+	return gcs.PutWithMeta(ctx, key, data, length, map[string]string{})
 }
 
 func (gcs *warmBackendGCS) Get(ctx context.Context, key string, rv remoteVersionID, opts WarmBackendGetOpts) (r io.ReadCloser, err error) {
@@ -102,7 +109,7 @@ func (gcs *warmBackendGCS) InUse(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-func newWarmBackendGCS(conf madmin.TierGCS, _ string) (*warmBackendGCS, error) {
+func newWarmBackendGCS(conf madmin.TierGCS, tier string) (*warmBackendGCS, error) {
 	// Validation code
 	if conf.Creds == "" {
 		return nil, errors.New("empty credentials unsupported")
@@ -117,7 +124,11 @@ func newWarmBackendGCS(conf madmin.TierGCS, _ string) (*warmBackendGCS, error) {
 		return nil, err
 	}
 
-	client, err := storage.NewClient(context.Background(), option.WithCredentialsJSON(credsJSON), option.WithScopes(storage.ScopeReadWrite))
+	client, err := storage.NewClient(context.Background(),
+		option.WithCredentialsJSON(credsJSON),
+		option.WithScopes(storage.ScopeReadWrite),
+		option.WithUserAgent(fmt.Sprintf("gcs-tier-%s", tier)+SlashSeparator+ReleaseTag),
+	)
 	if err != nil {
 		return nil, err
 	}
