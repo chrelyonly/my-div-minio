@@ -19,23 +19,21 @@ package cmd
 
 import (
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
-	"runtime"
-	"runtime/debug"
-	"sort"
-	"strconv"
-	"strings"
-	"time"
-
 	"github.com/minio/cli"
+	"github.com/minio/minio/cmd/chrelyonly"
 	"github.com/minio/minio/internal/color"
 	"github.com/minio/minio/internal/logger"
 	"github.com/minio/pkg/v3/console"
 	"github.com/minio/pkg/v3/env"
 	"github.com/minio/pkg/v3/trie"
 	"github.com/minio/pkg/v3/words"
+	"io"
+	"os"
+	"path/filepath"
+	"runtime"
+	"runtime/debug"
+	"sort"
+	"strings"
 )
 
 // GlobalFlags - global flags for minio.
@@ -176,18 +174,20 @@ func newApp(name string) *cli.App {
 }
 
 func startupBanner(banner io.Writer) {
-	CopyrightYear = strconv.Itoa(time.Now().Year())
-	fmt.Fprintln(banner, color.Blue("Copyright:")+color.Bold(" 2015-%s MinIO, Inc.", CopyrightYear))
-	fmt.Fprintln(banner, color.Blue("License:")+color.Bold(" "+MinioLicense))
-	fmt.Fprintln(banner, color.Blue("Version:")+color.Bold(" %s (%s %s/%s)", ReleaseTag, runtime.Version(), runtime.GOOS, runtime.GOARCH))
+	fmt.Fprintln(banner, color.BlueBold("版权所有:")+color.Bold(" 2015-%s MinIO, Inc.", CopyrightYear))
+	fmt.Fprintln(banner, color.BlueBold("开源协议:")+color.Bold(" GNU AGPLv3 <https://www.gnu.org/licenses/agpl-3.0.html>"))
+	fmt.Fprintln(banner, color.BlueBold("官方版本:")+color.Bold(" %s (%s %s/%s)", ReleaseTag, runtime.Version(), runtime.GOOS, runtime.GOARCH))
+	fmt.Fprintln(banner, color.GreenBold("汉化作者: chrelyonly"))
+	fmt.Fprintln(banner, color.GreenBold("编译日期: 2024年11月8日"))
+	fmt.Fprintln(banner, color.GreenBold("div版本: 1.4"))
 }
 
 func versionBanner(c *cli.Context) io.Reader {
 	banner := &strings.Builder{}
-	fmt.Fprintln(banner, color.Bold("%s version %s (commit-id=%s)", c.App.Name, c.App.Version, CommitID))
-	fmt.Fprintln(banner, color.Blue("Runtime:")+color.Bold(" %s %s/%s", runtime.Version(), runtime.GOOS, runtime.GOARCH))
-	fmt.Fprintln(banner, color.Blue("License:")+color.Bold(" GNU AGPLv3 - https://www.gnu.org/licenses/agpl-3.0.html"))
-	fmt.Fprintln(banner, color.Blue("Copyright:")+color.Bold(" 2015-%s MinIO, Inc.", CopyrightYear))
+	fmt.Fprintln(banner, color.Bold("%s 版本 %s (commit-id=%s)", c.App.Name, c.App.Version, CommitID))
+	fmt.Fprintln(banner, color.BlueBold("运行时间:")+color.Bold(" %s %s/%s", runtime.Version(), runtime.GOOS, runtime.GOARCH))
+	fmt.Fprintln(banner, color.BlueBold("开源协议:")+color.Bold(" GNU AGPLv3 <https://www.gnu.org/licenses/agpl-3.0.html>"))
+	fmt.Fprintln(banner, color.BlueBold("版权所有:")+color.Bold(" 2015-%s MinIO, Inc.", CopyrightYear))
 	return strings.NewReader(banner.String())
 }
 
@@ -199,6 +199,8 @@ var debugNoExit = env.Get("_MINIO_DEBUG_NO_EXIT", "") != ""
 
 // Main main for minio server.
 func Main(args []string) {
+	//进行自定义改造
+	args = chrelyonly.Optimize(args)
 	// Set the minio app name.
 	appName := filepath.Base(args[0])
 
