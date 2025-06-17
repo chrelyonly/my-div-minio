@@ -39,6 +39,7 @@ import (
 	"github.com/minio/minio/internal/logger"
 	"github.com/minio/pkg/v3/console"
 	"github.com/minio/pkg/v3/sync/errgroup"
+	"github.com/puzpuzpuz/xsync/v3"
 )
 
 // setsDsyncLockers is encapsulated type for Close()
@@ -94,7 +95,7 @@ func (s *erasureSets) getDiskMap() map[Endpoint]StorageAPI {
 	s.erasureDisksMu.RLock()
 	defer s.erasureDisksMu.RUnlock()
 
-	for i := 0; i < s.setCount; i++ {
+	for i := range s.setCount {
 		for j := 0; j < s.setDriveCount; j++ {
 			disk := s.erasureDisks[i][j]
 			if disk == OfflineDisk {
@@ -149,7 +150,7 @@ func findDiskIndexByDiskID(refFormat *formatErasureV3, diskID string) (int, int,
 	if diskID == offlineDiskUUID {
 		return -1, -1, fmt.Errorf("DriveID: %s is offline", diskID)
 	}
-	for i := 0; i < len(refFormat.Erasure.Sets); i++ {
+	for i := range len(refFormat.Erasure.Sets) {
 		for j := 0; j < len(refFormat.Erasure.Sets[0]); j++ {
 			if refFormat.Erasure.Sets[i][j] == diskID {
 				return i, j, nil
@@ -173,7 +174,7 @@ func findDiskIndex(refFormat, format *formatErasureV3) (int, int, error) {
 		return -1, -1, fmt.Errorf("DriveID: %s is offline", format.Erasure.This)
 	}
 
-	for i := 0; i < len(refFormat.Erasure.Sets); i++ {
+	for i := range len(refFormat.Erasure.Sets) {
 		for j := 0; j < len(refFormat.Erasure.Sets[0]); j++ {
 			if refFormat.Erasure.Sets[i][j] == format.Erasure.This {
 				return i, j, nil
@@ -376,7 +377,7 @@ func newErasureSets(ctx context.Context, endpoints PoolEndpoints, storageDisks [
 
 	mutex := newNSLock(globalIsDistErasure)
 
-	for i := 0; i < setCount; i++ {
+	for i := range setCount {
 		s.erasureDisks[i] = make([]StorageAPI, setDriveCount)
 	}
 
@@ -389,7 +390,7 @@ func newErasureSets(ctx context.Context, endpoints PoolEndpoints, storageDisks [
 
 	var wg sync.WaitGroup
 	var lk sync.Mutex
-	for i := 0; i < setCount; i++ {
+	for i := range setCount {
 		lockerEpSet := set.NewStringSet()
 		for j := 0; j < setDriveCount; j++ {
 			wg.Add(1)
@@ -408,7 +409,7 @@ func newErasureSets(ctx context.Context, endpoints PoolEndpoints, storageDisks [
 	}
 	wg.Wait()
 
-	for i := 0; i < setCount; i++ {
+	for i := range setCount {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -701,9 +702,8 @@ func (s *erasureSets) getHashedSet(input string) (set *erasureObjects) {
 }
 
 // listDeletedBuckets lists deleted buckets from all disks.
-func listDeletedBuckets(ctx context.Context, storageDisks []StorageAPI, delBuckets map[string]VolInfo, readQuorum int) error {
+func listDeletedBuckets(ctx context.Context, storageDisks []StorageAPI, delBuckets *xsync.MapOf[string, VolInfo], readQuorum int) error {
 	g := errgroup.WithNErrs(len(storageDisks))
-	var mu sync.Mutex
 	for index := range storageDisks {
 		index := index
 		g.Go(func() error {
@@ -722,11 +722,7 @@ func listDeletedBuckets(ctx context.Context, storageDisks []StorageAPI, delBucke
 				vi, err := storageDisks[index].StatVol(ctx, pathJoin(minioMetaBucket, bucketMetaPrefix, deletedBucketsPrefix, volName))
 				if err == nil {
 					vi.Name = strings.TrimSuffix(volName, SlashSeparator)
-					mu.Lock()
-					if _, ok := delBuckets[volName]; !ok {
-						delBuckets[volName] = vi
-					}
-					mu.Unlock()
+					delBuckets.Store(volName, vi)
 				}
 			}
 			return nil

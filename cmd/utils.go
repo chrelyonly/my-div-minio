@@ -20,7 +20,9 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -34,6 +36,7 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"runtime/trace"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -42,13 +45,14 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/felixge/fgprof"
 	"github.com/minio/madmin-go/v3"
+	xaudit "github.com/minio/madmin-go/v3/logger/audit"
 	"github.com/minio/minio-go/v7"
 	miniogopolicy "github.com/minio/minio-go/v7/pkg/policy"
 	"github.com/minio/minio/internal/config"
 	"github.com/minio/minio/internal/config/api"
 	xtls "github.com/minio/minio/internal/config/identity/tls"
 	"github.com/minio/minio/internal/config/storageclass"
-	"github.com/minio/minio/internal/fips"
+	"github.com/minio/minio/internal/crypto"
 	"github.com/minio/minio/internal/handlers"
 	"github.com/minio/minio/internal/hash"
 	xhttp "github.com/minio/minio/internal/http"
@@ -59,7 +63,6 @@ import (
 	"github.com/minio/mux"
 	"github.com/minio/pkg/v3/certs"
 	"github.com/minio/pkg/v3/env"
-	xaudit "github.com/minio/pkg/v3/logger/message/audit"
 	xnet "github.com/minio/pkg/v3/net"
 	"golang.org/x/oauth2"
 )
@@ -254,10 +257,28 @@ func xmlDecoder(body io.Reader, v interface{}, size int64) error {
 	return err
 }
 
-// hasContentMD5 returns true if Content-MD5 header is set.
-func hasContentMD5(h http.Header) bool {
-	_, ok := h[xhttp.ContentMD5]
-	return ok
+// validateLengthAndChecksum returns if a content checksum is set,
+// and will replace r.Body with a reader that checks the provided checksum
+func validateLengthAndChecksum(r *http.Request) bool {
+	if mdFive := r.Header.Get(xhttp.ContentMD5); mdFive != "" {
+		want, err := base64.StdEncoding.DecodeString(mdFive)
+		if err != nil {
+			return false
+		}
+		r.Body = hash.NewChecker(r.Body, md5.New(), want, r.ContentLength)
+		return true
+	}
+	cs, err := hash.GetContentChecksum(r.Header)
+	if err != nil {
+		return false
+	}
+	if cs == nil || !cs.Type.IsSet() {
+		return false
+	}
+	if cs.Valid() && !cs.Type.Trailing() {
+		r.Body = hash.NewChecker(r.Body, cs.Type.Hasher(), cs.Raw, r.ContentLength)
+	}
+	return true
 }
 
 // http://docs.aws.amazon.com/AmazonS3/latest/dev/UploadingObjects.html
@@ -591,8 +612,8 @@ func NewInternodeHTTPTransport(maxIdleConnsPerHost int) func() http.RoundTripper
 		LookupHost:       globalDNSCache.LookupHost,
 		DialTimeout:      rest.DefaultTimeout,
 		RootCAs:          globalRootCAs,
-		CipherSuites:     fips.TLSCiphers(),
-		CurvePreferences: fips.TLSCurveIDs(),
+		CipherSuites:     crypto.TLSCiphers(),
+		CurvePreferences: crypto.TLSCurveIDs(),
 		EnableHTTP2:      false,
 		TCPOptions:       globalTCPOptions,
 	}.NewInternodeHTTPTransport(maxIdleConnsPerHost)
@@ -605,8 +626,8 @@ func NewHTTPTransportWithClientCerts(clientCert, clientKey string) http.RoundTri
 		LookupHost:       globalDNSCache.LookupHost,
 		DialTimeout:      defaultDialTimeout,
 		RootCAs:          globalRootCAs,
-		CipherSuites:     fips.TLSCiphersBackwardCompatible(),
-		CurvePreferences: fips.TLSCurveIDs(),
+		CipherSuites:     crypto.TLSCiphersBackwardCompatible(),
+		CurvePreferences: crypto.TLSCurveIDs(),
 		TCPOptions:       globalTCPOptions,
 		EnableHTTP2:      false,
 	}
@@ -644,8 +665,8 @@ func NewHTTPTransportWithTimeout(timeout time.Duration) *http.Transport {
 		DialTimeout:      defaultDialTimeout,
 		RootCAs:          globalRootCAs,
 		TCPOptions:       globalTCPOptions,
-		CipherSuites:     fips.TLSCiphersBackwardCompatible(),
-		CurvePreferences: fips.TLSCurveIDs(),
+		CipherSuites:     crypto.TLSCiphersBackwardCompatible(),
+		CurvePreferences: crypto.TLSCurveIDs(),
 		EnableHTTP2:      false,
 	}.NewHTTPTransportWithTimeout(timeout)
 }
@@ -656,8 +677,8 @@ func NewRemoteTargetHTTPTransport(insecure bool) func() *http.Transport {
 	return xhttp.ConnSettings{
 		LookupHost:       globalDNSCache.LookupHost,
 		RootCAs:          globalRootCAs,
-		CipherSuites:     fips.TLSCiphersBackwardCompatible(),
-		CurvePreferences: fips.TLSCurveIDs(),
+		CipherSuites:     crypto.TLSCiphersBackwardCompatible(),
+		CurvePreferences: crypto.TLSCurveIDs(),
 		TCPOptions:       globalTCPOptions,
 		EnableHTTP2:      false,
 	}.NewRemoteTargetHTTPTransport(insecure)
@@ -830,7 +851,7 @@ func lcp(strs []string, pre bool) string {
 		// compare letters
 		if pre {
 			// prefix, iterate left to right
-			for i := 0; i < maxl; i++ {
+			for i := range maxl {
 				if xfix[i] != str[i] {
 					xfix = xfix[:i]
 					break
@@ -838,7 +859,7 @@ func lcp(strs []string, pre bool) string {
 			}
 		} else {
 			// suffix, iterate right to left
-			for i := 0; i < maxl; i++ {
+			for i := range maxl {
 				xi := xfixl - i - 1
 				si := strl - i - 1
 				if xfix[xi] != str[si] {
@@ -965,11 +986,11 @@ func newTLSConfig(getCert certs.GetCertificateFunc) *tls.Config {
 	}
 
 	if secureCiphers := env.Get(api.EnvAPISecureCiphers, config.EnableOn) == config.EnableOn; secureCiphers {
-		tlsConfig.CipherSuites = fips.TLSCiphers()
+		tlsConfig.CipherSuites = crypto.TLSCiphers()
 	} else {
-		tlsConfig.CipherSuites = fips.TLSCiphersBackwardCompatible()
+		tlsConfig.CipherSuites = crypto.TLSCiphersBackwardCompatible()
 	}
-	tlsConfig.CurvePreferences = fips.TLSCurveIDs()
+	tlsConfig.CurvePreferences = crypto.TLSCurveIDs()
 	return tlsConfig
 }
 
@@ -1155,4 +1176,20 @@ func filterStorageClass(ctx context.Context, s string) string {
 		return globalVeeamForceSC
 	}
 	return s
+}
+
+type ordered interface {
+	~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr | ~float32 | ~float64 | string
+}
+
+// mapKeysSorted returns the map keys as a sorted slice.
+func mapKeysSorted[Map ~map[K]V, K ordered, V any](m Map) []K {
+	res := make([]K, 0, len(m))
+	for k := range m {
+		res = append(res, k)
+	}
+	sort.Slice(res, func(i, j int) bool {
+		return res[i] < res[j]
+	})
+	return res
 }

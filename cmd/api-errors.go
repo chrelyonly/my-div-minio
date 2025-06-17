@@ -214,6 +214,9 @@ const (
 	ErrPolicyNotAttached
 	ErrExcessData
 	ErrPolicyInvalidName
+	ErrNoTokenRevokeType
+	ErrAdminOpenIDNotEnabled
+	ErrAdminNoSuchAccessKey
 	// Add new error codes here.
 
 	// SSE-S3/SSE-KMS related API errors
@@ -567,6 +570,11 @@ var errorCodes = errorCodeMap{
 		Description:    "Policy name may not contain comma",
 		HTTPStatusCode: http.StatusBadRequest,
 	},
+	ErrAdminOpenIDNotEnabled: {
+		Code:           "OpenIDNotEnabled",
+		Description:    "No enabled OpenID Connect identity providers",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
 	ErrPolicyTooLarge: {
 		Code:           "PolicyTooLarge",
 		Description:    "Policy exceeds the maximum allowed document size.",
@@ -629,7 +637,7 @@ var errorCodes = errorCodeMap{
 	},
 	ErrMissingContentMD5: {
 		Code:           "MissingContentMD5",
-		Description:    "Missing required header for this request: Content-Md5.",
+		Description:    "Missing or invalid required header for this request: Content-Md5 or Amz-Content-Checksum",
 		HTTPStatusCode: http.StatusBadRequest,
 	},
 	ErrMissingSecurityHeader: {
@@ -1263,6 +1271,16 @@ var errorCodes = errorCodeMap{
 		Code:           "InvalidTokenId",
 		Description:    "The security token included in the request is invalid",
 		HTTPStatusCode: http.StatusForbidden,
+	},
+	ErrNoTokenRevokeType: {
+		Code:           "InvalidArgument",
+		Description:    "No token revoke type specified and one could not be inferred from the request",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrAdminNoSuchAccessKey: {
+		Code:           "XMinioAdminNoSuchAccessKey",
+		Description:    "The specified access key does not exist.",
+		HTTPStatusCode: http.StatusNotFound,
 	},
 
 	// S3 extensions.
@@ -2161,6 +2179,8 @@ func toAPIErrorCode(ctx context.Context, err error) (apiErr APIErrorCode) {
 		apiErr = ErrAdminNoSuchUserLDAPWarn
 	case errNoSuchServiceAccount:
 		apiErr = ErrAdminServiceAccountNotFound
+	case errNoSuchAccessKey:
+		apiErr = ErrAdminNoSuchAccessKey
 	case errNoSuchGroup:
 		apiErr = ErrAdminNoSuchGroup
 	case errGroupNotEmpty:
@@ -2254,6 +2274,8 @@ func toAPIErrorCode(ctx context.Context, err error) (apiErr APIErrorCode) {
 		apiErr = ErrServerNotInitialized
 	case errBucketMetadataNotInitialized:
 		apiErr = ErrBucketMetadataNotInitialized
+	case hash.ErrInvalidChecksum:
+		apiErr = ErrInvalidChecksum
 	}
 
 	// Compression errors
