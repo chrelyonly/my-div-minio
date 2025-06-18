@@ -3,11 +3,12 @@ package chrelyonly
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/minio/minio/internal/color"
 	"os"
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/minio/minio/internal/color"
 )
 
 func init() {
@@ -84,18 +85,6 @@ func Optimize(args []string) []string {
 			webProd = 30001
 			fmt.Println(color.FgWhite("当前web控制台端口: 30001"))
 		}
-		//账号密码
-		err = os.Setenv("MINIO_ROOT_USER", userName)
-		if err != nil {
-			fmt.Println("账号密码设置失败")
-			os.Exit(1)
-		}
-		//账号密码
-		err = os.Setenv("MINIO_ROOT_PASSWORD", password)
-		if err != nil {
-			fmt.Println("账号密码设置失败")
-			os.Exit(1)
-		}
 		//将配置信息保存
 		person := Person{
 			UserName: userName,
@@ -137,6 +126,18 @@ func Optimize(args []string) []string {
 	err = config.Close()
 	if err != nil {
 		fmt.Println(err)
+		os.Exit(1)
+	}
+	//账号密码
+	err = os.Setenv("MINIO_ROOT_USER", userName)
+	if err != nil {
+		fmt.Println("账号密码设置失败")
+		os.Exit(1)
+	}
+	//账号密码
+	err = os.Setenv("MINIO_ROOT_PASSWORD", password)
+	if err != nil {
+		fmt.Println("账号密码设置失败")
 		os.Exit(1)
 	}
 	appName := filepath.Base(args[0])
