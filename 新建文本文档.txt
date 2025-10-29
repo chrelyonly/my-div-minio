@@ -1,0 +1,6 @@
+mc.exe alias set minio-admin-3 https://minio-3.frp.chrelyonly.cn chrelyonly wuqingmeng721 添加服务
+mc admin info minio-admin-3 查询服务
+mc anonymous get minio-admin-3/music 获取桶权限
+mc anonymous set download minio-admin-3/music 设置桶权限
+
+
